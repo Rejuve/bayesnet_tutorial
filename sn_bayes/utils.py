@@ -87,9 +87,9 @@ def fillcols(var_dict):
 
 def make_tree(bayesianNetwork, connections = True):
     variable_dependencies = var_deps(bayesianNetwork)
-    #print(variable_dependencies)
+    print(variable_dependencies)
     tree = fillcols(variable_dependencies)
-    #print(tree)
+    print(tree)
     newtree = []
     for ply in tree:
         newl=[]
