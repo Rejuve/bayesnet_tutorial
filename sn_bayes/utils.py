@@ -1,5 +1,4 @@
 from pomegranate import DiscreteDistribution
-
 from pomegranate import BayesianNetwork
 from pomegranate import Node
 from pomegranate import ConditionalProbabilityTable
@@ -109,7 +108,7 @@ def make_tree(bayesianNetwork, connections = True):
         df_dict[key] = l  
     df = pd.DataFrame.from_dict(df_dict, orient='index').T
     if not connections:
-        df=df.replace(to_replace=r"([0-9a-zA-Z\-_\.]+)(.*)", value=r"\1", regex=True) 
+        df = df.replace(to_replace=r"([0-9a-zA-Z\-_\.]+)(.*)", value=r"\1", regex=True) 
     #df.str.replace(r'[^0-9a-zA-Z\-_]+', '', regex=True)  
     return df
 
@@ -153,29 +152,17 @@ def get_var_positions(bayesianNetwork):
         check_for_repeats= set()
         for i,dist in enumerate(bayesianNetwork.discreteDistributions):
                 var_positions[dist.name]=i
-                #print ("dist.name") 
-                #print (dist.name)
-                #print ("i")
-                #print (i)
                 if dist.name in check_for_repeats:
                     print(f"double instance of {dist.name}") 
                 else:
                     check_for_repeats.add(dist.name)
         start = len(var_positions)
-        #print ("start")
-        #print(start)
         for j,table in enumerate(bayesianNetwork.conditionalProbabilityTables):
                 var_positions[table.name] = j+ start
-                #print("table.name")
-                #print(table.name)
-                #print("j")
-                #print(j)
                 if table.name in check_for_repeats:
                     print(f"double instance of {table.name}") 
                 else:
                     check_for_repeats.add(table.name)
-        #print("get_var_positions")
-        #print(get_var_positions)
         return var_positions
 
 
