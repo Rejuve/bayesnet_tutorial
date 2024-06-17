@@ -12,6 +12,11 @@ import typing
 import numpy as np
 from dateutil.parser import parse
 import time
+from adtk.data import validate_series
+import itertools
+from scipy.optimize import linprog
+from qpsolvers import solve_qp
+import time
 
 T = typing.TypeVar("T")
 
@@ -56,13 +61,10 @@ def var_deps(bayesianNetwork):
 
 
 def fillcols(var_dict):
-    var_deps =copy.deepcopy(var_dict)
-    #go through the dict and create a lists of lists , 
-    #where a var goes in the list only if all of the variable upon which 
-    #it depends are in the previous lists.
+    var_deps = copy.deepcopy(var_dict)
     tree_list = []
     initial_len = len(var_deps)
-    final_len=0
+    final_len = 0
     while len(var_deps)>  0 and final_len < initial_len:
         next_level = []
         deletes =[]
@@ -82,7 +84,8 @@ def fillcols(var_dict):
             var_deps.pop(delete)
         final_len = len(var_deps)
         tree_list.append(next_level)
-    return(tree_list)    
+    return (tree_list)    
+
 
 def make_tree(bayesianNetwork, connections = True):
     variable_dependencies = var_deps(bayesianNetwork)
@@ -94,7 +97,6 @@ def make_tree(bayesianNetwork, connections = True):
         newl=[]
         for v in ply: 
             newstr = v + "("
-            #print(v)
             deps = variable_dependencies[v]
             for d in deps:
                 newstr += d
@@ -117,7 +119,6 @@ def complexity_check(bayesianNetwork,
         max_size_in_bytes = 256000000,             
         allowed_number_nodes = 5000,
         allowed_number_variables=9, allowed_number_variable_values= 15):
-
         passes = True
         messages = []
         size = bayesianNetwork.ByteSize()
@@ -130,7 +131,6 @@ def complexity_check(bayesianNetwork,
                 if num_nodes > allowed_number_nodes:
                         passes = False
                         messages.append("This net's number of nodes is {0} while allowed number is {1}".format(num_nodes,allowed_number_nodes))
-
                 lenlist = [len(l) for l in list(var_val_positions.values())]
                 maxvarval=  max(lenlist) if len(lenlist) > 0  else 0
                 if maxvarval > allowed_number_variable_values:
@@ -146,7 +146,6 @@ def complexity_check(bayesianNetwork,
         return (passes,errors)
 
         
-
 def get_var_positions(bayesianNetwork):
         var_positions = {}
         check_for_repeats= set()
@@ -199,6 +198,7 @@ def get_var_names(bayesianNetwork):
                 var_names[j+ start] = table.name
         return var_names
 
+    
 def get_var_val_names(bayesianNetwork):
         var_val_names = {}
         for dist in bayesianNetwork.discreteDistributions:
@@ -211,9 +211,8 @@ def get_var_val_names(bayesianNetwork):
                         var_val_names[table.name][pos] = var.name
         return var_val_names
 
+    
 def parse_net(query, bayesianNetwork):
-        #print("parse_net query")
-        #print(query)
         var_val_names = get_var_val_names(bayesianNetwork)
         var_names = get_var_names(bayesianNetwork)
         evidence_dict = {}
@@ -251,7 +250,7 @@ def parse_net(query, bayesianNetwork):
         include_list = [var_names[o.var_num] for o in query.include_list if o.var_num in var_names]
         return(evidence_dict, outvar_list, explainvars, reverse_explain_list, reverse_evidence,anomaly_tuples,anomaly_params_dict,include_list,baseline,switch)
 
-from adtk.data import validate_series
+
 
 def quan(s,percentile):
     sr = s.quantile(percentile)
@@ -289,20 +288,12 @@ def iqr(s,c):
             )
             else float("inf")
         )
-        #print("s.max()")
-        #print (s.max())
-        #print("s.min()")
-        #print(s.min())
         if abs_high > s.max()[0] and abs_low < s.min()[0]:
             print ("no iqr anomalies")
         return(abs_low,abs_high)
 
 
 def detect_anomalies(anomaly_tuples,bayesianNetwork,anomaly_params):
-        #print ("anomaly_tuples")
-        #print(anomaly_tuples)
-        #print ("anomaly_params")
-        #print (anomaly_params)
         evidence = {}
         anomaly_dict = {}
         signal_dict ={}
@@ -340,8 +331,6 @@ def detect_anomalies(anomaly_tuples,bayesianNetwork,anomaly_params):
                 if pd.NaT in s.index:
                     s = s.drop(pd.NaT)
                 signal_dict[var]=s
-                #print("s")
-                #print(s)
                 s_dict[var]=[]
                 last_dti = None
                 interval = 0
@@ -350,8 +339,6 @@ def detect_anomalies(anomaly_tuples,bayesianNetwork,anomaly_params):
                         this_dti = index
                         diff = this_dti - last_dti
                         interval = float(diff.total_seconds())
-                        #print ("interval")
-                        #print (interval)
                     last_dti = index
                     s_dict[var].append ((interval,row['value']))      
                 detector_set = set(anomaly_params[var]["detectors"])
@@ -398,8 +385,6 @@ def detect_anomalies(anomaly_tuples,bayesianNetwork,anomaly_params):
                         except ValueError as e:
                             print(f'InterQuartileRangeAD-{var} ValueError')
                             print(e)
-
-
                     elif detector == "QuantileAD":
                         try:
                             from adtk.detector import QuantileAD
@@ -409,14 +394,12 @@ def detect_anomalies(anomaly_tuples,bayesianNetwork,anomaly_params):
                             anomaly_dict[var][detector] = quantile_ad.fit_detect(s)
                             fitted[var]['low_percent'] = quan(s,anomaly_params[var]['low_percent'])
                             fitted[var]['high_percent'] = quan(s,anomaly_params[var]['high_percent'])
-
                         except RuntimeError as e:
                             print(f'QuantileAD-{var}')
                             print(e)
                         except ValueError as e:
                             print(f'QuantileAD-{var}')
                             print(e)
-
                     elif detector == "ThresholdAD":          
                         try:
                             from adtk.detector import ThresholdAD
@@ -431,25 +414,18 @@ def detect_anomalies(anomaly_tuples,bayesianNetwork,anomaly_params):
                         except ValueError as e:
                             print(f'ThresholdAD-{var}')
                             print(e)
-
                     elif detector == "VolatilityShiftAD":
                         try:
                             from adtk.detector import VolatilityShiftAD
                             volatility_shift_ad = VolatilityShiftAD(c=anomaly_params[var]['c'], side=anomaly_params[var]['side'],window=anomaly_params[var]['window'])
                             anomaly_dict[var][detector] = volatility_shift_ad.fit_detect(s)
                             fitted[var]['std'] = std(s)
-                            #print (f"fitted[{var}]['std']")
-                            #print (fitted[var]['std'])
-               
                         except RuntimeError as e:
                             print(f'VolatilityShiftAD-{var}')
                             print(e)
                         except ValueError as e:
                             print(f'VolatilityShiftAD-{var}')
                             print(e)
-
-
-
                 firsttime = True
                 for detector,df in anomaly_dict[var].items():
                     if firsttime:
@@ -459,82 +435,50 @@ def detect_anomalies(anomaly_tuples,bayesianNetwork,anomaly_params):
                     else:
                         combined_df[detector] = df['value']
                 combined_df['value']=combined_df.all(1) if anomaly_params[var]['is_all'] else combined_df.any(1)
-
                 is_anomalous = combined_df[['value']].tail(anomaly_params[var]["n"])['value'].any()
                 evidence[var] = var_val_names[var][0] if is_anomalous else var_val_names[var][1]
-                #print("anomaly_dict")
-                #print(anomaly_dict)
-                #print("combined_df")
-                #print(combined_df)
                 temp = combined_df[['value']].to_records()
-                #print("temp")
-                #print(temp)
                 anomaly_out['anomalies'][var]= [tup[1] for tup  in temp]
                 #anomaly_out['signal'][var] = list(signal_dict[var].to_records())
                 anomaly_out['signal'][var]=s_dict[var]
-                #print (f"anomaly_out['anomalies'][{var}][0]:")
-                #print (anomaly_out['anomalies'][var][0])
                 anomaly_out['fitted'][var] = fitted[var]
                 anomaly_out['evidence'][var] = evidence[var]
         return (anomaly_out)
 
 
 def readable(bayesianNetwork,response):
-
         var_val_names = get_var_val_names(bayesianNetwork)
         var_names = get_var_names(bayesianNetwork)
         readable = {}
         for answer in response.varAnswers:
             var = var_names[answer.var_num]
             readable[var]={}
-            #print("answer")
-            #print(answer)
             for state in answer.varStates:
                 readable[var][var_val_names[var][state.state_num]]= state.probability
-        
-        #print ("readable")
-        #print(readable)
         return readable
                  
-def create_query (bayesianNetwork,evidence_dict,outvar_list,explainvars=[],
+def create_query(bayesianNetwork,evidence_dict,outvar_list,explainvars=[],
         reverse_explainvars=[],reverse_evidence=[],timeseries = [], include_list = [], baseline = None, switch= None):
-        #create a query for the test service
-
-        #print("evidence_dict")
-        #print(evidence_dict)
-        #print("outvar_list")
-        #print(outvar_list)
         query = Query()
         query.switch = switch
         if baseline:
                 query.baseline.CopyFrom( baseline)
-
-
         var_val_positions = get_var_val_positions(bayesianNetwork)
-        #print ("var_val_positions")
-        #print (var_val_positions)
         var_positions = get_var_positions(bayesianNetwork)
-        #print ("var_positions")
-        #print (var_positions)
         for v in include_list:
                 if v in var_positions:
                         outvar = query.include_list.add()
                         outvar.var_num = var_positions[v]
-
                         #print ("outvar")
         for k,v in evidence_dict.items():
                 if k in var_positions and k in var_val_positions and v in var_val_positions[k]:
                         evidence= query.evidence.add()
                         evidence.var_num = var_positions[k]
                         evidence.response = var_val_positions[k][v]
-                        #print("evidence")
-                        #print(evidence)
         for v in outvar_list:
                 if v in var_positions:
                         outvar = query.outvars.add()
                         outvar.var_num = var_positions[v]
-                        #print ("outvar")
-                        #print(outvar)
         for v in explainvars:
                 if v in var_positions:
                         explainvar = query.explainvars.add()
@@ -555,10 +499,9 @@ def create_query (bayesianNetwork,evidence_dict,outvar_list,explainvars=[],
                         timeseries = time.timevals.add()
                         timeseries.val = q["val"]
                         timeseries.interval = q["interval"]
-
-                    
         return query
 
+    
 def get_template_priors(bayesianNetwork):
         template_priors = {}
         for dist in bayesianNetwork.discreteDistributions:
@@ -568,13 +511,11 @@ def get_template_priors(bayesianNetwork):
         return template_priors
 
 
-def predict_proba_adjusted ( baked_net,netspec,evidence_list = {},adjust=False):
+def predict_proba_adjusted(baked_net,netspec,evidence_list = {},adjust=False):
     var_val_names = get_var_val_names(netspec)
     var_positions = get_var_positions(netspec)
     template_priors = get_template_priors(netspec)
     prior_var = list(template_priors.keys())[0]
-    #print ("template_priors")
-    #print (template_priors)
     dist = {}
     answer = {}
     if len (evidence_list) < 1 and adjust:
@@ -584,13 +525,9 @@ def predict_proba_adjusted ( baked_net,netspec,evidence_list = {},adjust=False):
             for dist_name,val_dict in var_val_names.items():
                 if dist_name not in dist:
                     dist[dist_name]={}
-               
                 try:
                         answer[dist_name] = (json.loads(description[var_positions[dist_name]].to_json()))['parameters'][0]
                 except AttributeError as e:
-                        #print("AttributeError")
-                        #print(dist_name)
-                        #print(e)
                         pass
                 for k,v in evidence.items(): 
                     var_vals = {}
@@ -598,25 +535,19 @@ def predict_proba_adjusted ( baked_net,netspec,evidence_list = {},adjust=False):
                         prob = 0.99999 if v == val else 0.00001
                         var_vals[val]= prob
                     answer[k]=var_vals
-
                 for dummy,val in val_dict.items():
                     if val not in dist[dist_name]:
                         dist[dist_name][val] = answer[dist_name][val]*prior_prob
                     else:
                         dist[dist_name][val] += answer[dist_name][val]*prior_prob
-
     else:
             description = baked_net.predict_proba(evidence_list)
             for dist_name,val_dict in var_val_names.items():
                 if dist_name not in dist:
                     dist[dist_name]={}
-               
                 try:
                         answer[dist_name] = (json.loads(description[var_positions[dist_name]].to_json()))['parameters'][0]
                 except AttributeError as e:
-                        #print("AttributeError")
-                        #print(dist_name)
-                        #print(e)
                         pass
                 for k,v in evidence_list.items(): 
                     var_vals = {}
@@ -635,31 +566,23 @@ def predict_proba_adjusted ( baked_net,netspec,evidence_list = {},adjust=False):
                             print(answer)
                             print("description")
                             print(description)
-
     return dist
-
 
 
 
 def batch_query(baked_net, netspec, evidence_list,out_var_list):
         answer_list = []
         var_positions = get_var_positions(netspec)
-        #print ('evidence_list')
-        #print (evidence_list)
         evidence_list = list(evidence_list)
         if "always_true" in var_positions:
                 evidence_list["always_true"]="always_true"
         description = baked_net.predict_proba(evidence_list,max_iterations=1,check_input = False, n_jobs=1)
-        #print ("description")
-        #print (description)
         for i,evidence in enumerate(evidence_list):
                 answer = {}
                 for dist_name in out_var_list:
                         try:
                                 answer[dist_name] = (json.loads(description[i][var_positions[dist_name]].to_json()))['parameters'][0]
                         except AttributeError as e:
-                                #print(dist_name)
-                                #print(e)
                                 pass
                 answer_list.append(answer)
         return answer_list
@@ -669,7 +592,6 @@ def batch_query(baked_net, netspec, evidence_list,out_var_list):
 def query(baked_net, netspec, evidence,out_var_list,adjust=False):
         answer={}
         probs = predict_proba_adjusted(baked_net,netspec,evidence,adjust)
-
         for dist_name in out_var_list:
                 answer[dist_name] = probs[dist_name]
         return answer
@@ -691,21 +613,8 @@ def internal_query(baked_net, netspec,evidence,adjust=False):
         result = query(baked_net,netspec,evidence,exclusion_list,adjust)
         return result
     
+    
 def explain(baked_net, netspec, evidence,explain_list, reverse_explain_list = [], reverse_evidence = [] , internal_query_result=None, include_list = []):
-        #explain_list lists output variables to tell what input variable would make them less likely (for example covid severity)
-        #reverse_explain_list tells which of those out vars to explain more likely rather than less likely  (for example social distancing)
-        #reverse_evidence_list tells which of the evidence to explain should perturb one val to the left rather than the right (the default)
-     #   
-        #first make a list of all the pertubations to make
-        #print  ("in explain, evidence,explain_list, reverse_explain_list, reverse_evidence")
-        #print  (evidence)
-        #print  (explain_list)
-        #print  (reverse_explain_list)
-        #print  (reverse_evidence)
-        #print ("In explain, internal_query_result")
-        #print(internal_query_result)
-        #print ("include_list")
-        #print(include_list)
         evidence_perturbations = {}
         var_val_positions = get_var_val_positions(netspec)
         var_val_names = get_var_val_names(netspec)
@@ -724,22 +633,14 @@ def explain(baked_net, netspec, evidence,explain_list, reverse_explain_list = []
                         new_val = var_val_names[var][new_pos]
                         new_evidence[var]=new_val
                         evidence_perturbations[var]= new_evidence
-                        
         # add in the internal nodes that arent the input nodes
         result = internal_query(baked_net,netspec,evidence) if internal_query_result == None else internal_query_result
-        #print ("result")
-        #print (result)
         internal_winners = {}
         for key,val_dict in result.items():
                 winner = max(val_dict,key=val_dict.get)
                 winner_val = val_dict[winner]
                 internal_winners[key] = (winner,winner_val)
-        #print('internal_winners')
-        #print(internal_winners)
         internal_evidence = {k:tup[0] for k,tup in internal_winners.items() }
-        #print ('internal_evidence')
-        #print(internal_evidence)
-        
         more_evidence = {}
         for var, val in internal_evidence.items():
                 best_pos = len(var_val_positions[var])-1
@@ -755,16 +656,7 @@ def explain(baked_net, netspec, evidence,explain_list, reverse_explain_list = []
                         new_val = var_val_names[var][new_pos]
                         more_evidence[var] = copy.deepcopy(evidence)        
                         more_evidence[var].update({var:new_val})
-        #print('more_evidence')
-        #print(more_evidence)
         evidence_perturbations.update(more_evidence)
-        #print ("evidence_perturbations")
-        #print (evidence_perturbations)
-        #next run each, obtaining the values of vars to be explained.  
-        #find the difference between these outputvalues and the output values from the original evidence input
-        #result = query(baked_net,netspec,evidence,explain_list)
-        #print ("result (without changes)")
-        #print(result)
         before_change = {}
         explanation = {}
         for key,val_dict in result.items():
@@ -773,20 +665,9 @@ def explain(baked_net, netspec, evidence,explain_list, reverse_explain_list = []
                     winner_val = val_dict[winner]
                     before_change[key] = (winner,winner_val)
                     explanation[key] = {}
-        #print("before_change")
-        #print(before_change)
-        #print("reverse_explain_list")
-        #print(reverse_explain_list)
-        #for explaining_var, evidence in evidence_perturbations.items():
-                #print("explaining_var")
-                #print(explaining_var)
-                #print("evidence")
-                #print(evidence)
         evidence = evidence_perturbations.values()
         after_change_list = batch_query(baked_net,netspec,evidence,explain_list)
         for explaining_var,after_change in zip(evidence_perturbations.keys(),after_change_list):
-                #print("result")
-                #print(result)
                 for key in explain_list:
                         if key in after_change:
                                 diff = before_change[key][1] - after_change[key][before_change[key][0]]
@@ -804,8 +685,6 @@ def make_nmap():
                 val = 1/a
                 for j in range (0,a):
                         cutoff[a][j] = j*val
-        #print("cutoff")
-        #print(cutoff)
         for a in range(2,10):
                 if not a in nmap:
                         nmap[a]={}
@@ -816,33 +695,15 @@ def make_nmap():
                                 lowercutoffi = cutoff[a][i]
                                 uppercutoffi = cutoff[a][i+1] if i+1 < a else 1
                                 k=0
-                                #print("len(cutoff[b])")
-                                #print(len(cutoff[b]))
-                                
                                 while k< len(cutoff[b]) and lowercutoffi >= cutoff [b][k]:
-                                        #print("cutoff [b][k]")
-                                        #print(cutoff [b][k])
                                         k += 1
                                 bucketnumLower = k-1
                                 k=0
-                                #print("len(cutoff[b])")
-                                #print(len(cutoff[b]))
                                 while k< len(cutoff[b]) and uppercutoffi > cutoff [b][k]:
-                                        #print("cutoff [b][k]")
-                                        #print(cutoff [b][k])
                                         k += 1
                                 bucketnumUpper = k
-                                #print("lowercutoffi")
-                                #print(lowercutoffi)
-                                #print("uppercutoffi")
-                                #print(uppercutoffi)
-                                #print("bucketnumLower")
-                                #print(bucketnumLower)
-                                #print("bucketnumUpper")
-                                #print(bucketnumUpper)
                                 coveredBuckets = [s for s in range(bucketnumLower, bucketnumUpper)]
-                                nmap[a][b][i] = set(coveredBuckets)
-                                
+                                nmap[a][b][i] = set(coveredBuckets)         
         return(nmap)
          
         
@@ -858,18 +719,12 @@ def dictVarsAndValues(bayesianNetwork,cpt):
                 for var in dist.outvars:
                         varsAndValues[dist.name].append(var.name)
         for name,cpt_tuple in cpt.items():
-                #print('name')
-                #print(name)
-                #print('cpt_tuple')
-                #print(cpt_tuple)
                 varsAndValues[name]= cpt_tuple[2]
         return varsAndValues
 
+    
 def any_of(bayesianNetwork, cpt, invars, outvars):
-        #print (outvars)
         import itertools
-
-        
         description = "{0} has the value of " + outvars[0] + " if "
         firsttime = True
         for var,vals in invars.items():
@@ -882,7 +737,6 @@ def any_of(bayesianNetwork, cpt, invars, outvars):
                         firsttime2 = False
                         description = description + phrase + val
         description = description + "; otherwise {0} has the value of " + outvars[1]+"."
-
         vdict = dictVarsAndValues(bayesianNetwork, cpt)
         vlist = [vdict[v] for v in invars.keys()]
         cartesian = list(itertools.product(*vlist))
@@ -909,10 +763,6 @@ def any_of(bayesianNetwork, cpt, invars, outvars):
 
 
 def all_of(bayesianNetwork, cpt, invars, outvars):
-        #print (outvars)
-        import itertools
-
-        
         description = "{0} has the value of " + outvars[0] + " if "
         firsttime = True
         for var,vals in invars.items():
@@ -925,7 +775,6 @@ def all_of(bayesianNetwork, cpt, invars, outvars):
                         firsttime2 = False
                         description = description + phrase + val
         description = description + "; otherwise {0} has the value of " + outvars[1]+"."
-
         vdict = dictVarsAndValues(bayesianNetwork, cpt)
         vlist = [vdict[v] for v in invars.keys()]
         cartesian = list(itertools.product(*vlist))
@@ -944,7 +793,6 @@ def all_of(bayesianNetwork, cpt, invars, outvars):
                         val = 1.0 if (i == 0 and qall) or (i == 1 and not qall) else 0.0
                         cpt_row.append(val)
                         cpt_rows.append(cpt_row)
-
         return (cpt_rows,keylist,outvars, description)
 
 
@@ -963,11 +811,6 @@ def avg(bayesianNetwork, cpt, invars, outvars):
                 level = "" if veryfirsttime else "next "
                 veryfirsttime = False
                 description = description + clause + " average to the " + level + "highest level of risk. "
-
-
-    
-    #print (outvars)
-        import itertools
         nmap = make_nmap()
         #print(nmap)
         vdict = dictVarsAndValues(bayesianNetwork, cpt)
@@ -991,11 +834,6 @@ def avg(bayesianNetwork, cpt, invars, outvars):
                                 if p not in bins:
                                         bins[p] = 0
                                 bins[p]+= incr
-                #print("c")
-                #print(c)
-                #print("bins")
-                #print(bins)
-
                 area = sum(bins.values())
                 mean = area/2.
                 cummu = 0. 
@@ -1004,7 +842,6 @@ def avg(bayesianNetwork, cpt, invars, outvars):
                         if cummu > mean:
                                 winner = k
                                 break
-
                 for i,o in enumerate(outvars):
                         cpt_row = []
                         cpt_row.extend(c)
@@ -1013,16 +850,11 @@ def avg(bayesianNetwork, cpt, invars, outvars):
                         val = bins[i]/area if i in bins else 0.0 #not in winner take all version
                         cpt_row.append(val)
                         cpt_rows.append(cpt_row)
-
         return (cpt_rows,keylist,outvars,description)
 
 
-
-
+    
 def if_then_else(bayesianNetwork, cpt, invars, outvars):
-        #print (outvars)
-        import itertools
- 
         description = "" 
         firsttime = True
         for i, (var,vals) in enumerate(invars.items()):
@@ -1035,16 +867,10 @@ def if_then_else(bayesianNetwork, cpt, invars, outvars):
                         firsttime2 = False
                         description = description + phrase + val
         description = description + "; otherwise {0} has the value of " + outvars[-1]+"."
-
-
         vdict = dictVarsAndValues(bayesianNetwork, cpt)
         vlist = [vdict[v] for v in invars.keys()]
         cartesian = list(itertools.product(*vlist))
         klist = [a for a in invars.values()]
-        #print('cartesian')
-        #print(cartesian)
-        #print('klist')
-        #print(klist)
         keylist = list(invars.keys())
         cpt_rows = [] 
         for c in cartesian:
@@ -1057,7 +883,6 @@ def if_then_else(bayesianNetwork, cpt, invars, outvars):
                         i += 1
                 if result == "":
                         result = outvars[-1]
-
                 for i,o in enumerate(outvars):
                         cpt_row = []
                         cpt_row.extend(c)
@@ -1072,9 +897,7 @@ def if_then_else(bayesianNetwork, cpt, invars, outvars):
 
 
 def addCpt(bayesianNetwork, cpt):
-
         outstring= ""
-
         for name, cpt_tuple in cpt.items():
                 #print (name)
                 conditionalProbabilityTable = bayesianNetwork.conditionalProbabilityTables.add()
@@ -1095,12 +918,10 @@ def addCpt(bayesianNetwork, cpt):
                         out = conditionalProbabilityTable.outvars.add()
                         out.name = outvar
                 outstring = outstring +  cpt_tuple[3].format(name) + "\n\n"
-
         return outstring
 
                                 
         
-
 
 def bayesInitialize(bayesianNetwork):
         model = BayesianNetwork()
@@ -1125,25 +946,12 @@ def bayesInitialize(bayesianNetwork):
                 varlist = []
                 for var in table.randomVariables:
                         varlist.append(general_distribution[var.name])
-                #print("table.name")
-                #print(table.name)
-                #print("tablelist")
-                #print(tablelist)
-                #print("varlist")
-                #print(varlist)
                 conditionalProbabilityTable = ConditionalProbabilityTable(tablelist,varlist)
                 general_distribution[table.name] = conditionalProbabilityTable
                 state[table.name] = Node(conditionalProbabilityTable, table.name)
                 model.add_state(state[table.name])
-                #print('state')
-                #print(state)
                 for var in table.randomVariables:
-                        #print("var.name")
-                        #print(var.name)
-                        #print ("table.name")
-                        #print (table.name)
                         model.add_edge(state[var.name],state[table.name])
-
         return model
 
 
@@ -1179,9 +987,7 @@ def get_priors(bayesianNetwork,invars,prevalence,cpt,adjust=False):
                         prob = 0.99999 if v == val else 0.00001
                         var_vals[val]= prob
                 priors[k]=var_vals
-        probs = predict_proba_adjusted(pomegranate,bayesianNetwork,evidence,adjust)#pomegranate.predict_proba(evidence)
-        #print("probs")
-        #print (probs)
+        probs = predict_proba_adjusted(pomegranate,bayesianNetwork,evidence,adjust) # pomegranate.predict_proba(evidence)
         vdict = dictVarsAndValues(bayesianNetwork, cpt)
         for vardict,numval_dict in invars:
                 numval = numval_dict["relative_risk"] if "relative_risk" in numval_dict else (
@@ -1192,65 +998,30 @@ def get_priors(bayesianNetwork,invars,prevalence,cpt,adjust=False):
                             priors[k] = {}
                         for v in vdict[k]:
                                 try:
-                                        #problem="hypertension"
-                                        #if k is problem or v is problem:
-                                        #print("k")
-                                        #print(k)
-                                        #print("v")
-                                        #print(v)
-                                            #print("var_positions")
-                                            #print(var_positions)
-                                            #print ("probs")
-                                            #print (probs)
-                                            #print("priors")
-                                            #print(priors)
-                                            #print("json.loads(probs[var_positions[k]].to_json())['parameters']")
-                                            #print(json.loads(probs[var_positions[k]].to_json())['parameters'])
                                         priors[k][v]=probs[k][v]#(json.loads(probs[var_positions[k]].to_json()))['parameters'][0][v]
                                         asum += priors[k][v]
                                 except AttributeError as e:
                                         pass
-                        #print("asum")
-                        #print(asum)
         return priors
                 
 def get_frequencies(bayesianNetwork,keylist,cpt,adjust=False,preconditionals = {}):
-        #print ("keylist")
-        #print (keylist)
-        #print ("preconditionals")
-        #print(preconditionals)
-
         pomegranate= bayesInitialize(bayesianNetwork)
-        #print(bayesianNetwork)
         pomegranate.bake()
-       
         frequencies = {}
         var_positions = get_var_positions(bayesianNetwork)
         vdict = dictVarsAndValues(bayesianNetwork, cpt)
-        #print ("vdict")
-        #print (vdict)
         conditionals={}
         for i in range (len(keylist)):
-                #print ("i")
-                #print(i)
                 short_keylist = keylist[:i] 
                 vlist = [vdict[v] for v in short_keylist]
-                #print("vlist")
-                #print(vlist)
                 cartesian = [()] if i==0 else ([tuple([a]) for a in vlist[0] ] if i==1 else list(itertools.product(*vlist)))
-                #print ("cartesian")
-                #print(cartesian)
                 for c in cartesian:
                         evidence = {} if i == 0 else {k:v for k,v in zip(short_keylist,c)} 
                         if "always_true" in keylist:
                             evidence["always_true"]="always_true"
                         evidence.update(preconditionals)
-                        #print ("evidence")
-                        #print (evidence)
                         #probs = pomegranate.predict_proba(evidence)
                         probs=predict_proba_adjusted(pomegranate,bayesianNetwork,evidence,adjust)
-                        #print ("probs")
-                        #print(probs)
                         conditionals[c]={}
                         for val in vdict[keylist[i]]:
                                 if keylist[i] in evidence:
@@ -1260,51 +1031,27 @@ def get_frequencies(bayesianNetwork,keylist,cpt,adjust=False,preconditionals = {
                                 except AttributeError as e:
                                         print (e)
                                         pass
-        #print("conditionals")
-        #print(conditionals)
         vlist = [vdict[v] for v in keylist]
         cartesian = list(itertools.product(*vlist))
-
-
         #prob (a,b,c) = prob a * prob b|a * prob c|ab  
         asum = 0
         for c in cartesian:
-                #print ("cartesian")
-                #print(cartesian)
                 product = 1
                 for i in range(len(c)):
                         key = tuple(c [:i])
-                        #print("key")
-                        #print(key)
                         product *= conditionals[key][c[i]]
                 frequencies[c]=product
                 asum += product
-        #print("asum")
-        #print(asum)
         return frequencies
-        
- 
 
+    
 def rr_prob_a_and_not_a_given_b_and_not_b (rr_dict,prior_a,prior_b_dict):
-
-#Solution to these equations:
-#rri=probagivenbi / probagivengood
-#probagivengood= sum(probagivengoodbi*priorgoodbi)/sum(priorgoodbi)
-#probagivenbi*priorbi +probagivennotbi * (1-prior bi) = priora
-#sumi(probagivenbi*priorbi)=priora
-#probagivenbi + probnotagivenbi = 1.0
-#probagivennotbi + probnotagivennotbi = 1.0
-
-#rr_dict: {v:rr}  (if no rr it is good) prior_b_dict: {v:prior}
-#returns {b:{prob_a_given_b, prob_a_given_not_b, prob_not_a_given_b, prob_not_a_given_not_b}}
-
         b = {}
         sum_prior_b_rr = 0
         for v,prior in prior_b_dict.items():
                 rr = rr_dict[v] if v in rr_dict else 1.
                 sum_prior_b_rr += prior * rr
-        prob_a_given_good = prior_a/sum_prior_b_rr
-        
+        prob_a_given_good = prior_a/sum_prior_b_rr    
         for v,prior in prior_b_dict.items():
                 b[v] = {}
                 rr = rr_dict[v] if v in rr_dict else 1.
@@ -1312,59 +1059,32 @@ def rr_prob_a_and_not_a_given_b_and_not_b (rr_dict,prior_a,prior_b_dict):
                 b[v]["prob_not_a_given_b"] = 1. - b[v]["prob_a_given_b"]
                 b[v]["prob_a_given_not_b"] = -1*prior_a * (sum_prior_b_rr-prior*rr)/((prior-1.)*sum_prior_b_rr)
                 b[v]["prob_not_a_given_not_b"]= 1. - b[v]["prob_a_given_not_b"] 
-                
         return b
 
 def ss_prob_a_and_not_a_given_b_and_not_b (sensitivity,specificity,prior_a,prior_b):
-    #Strategy:  break down into TP, TN, FP, FN
-    # 4 equations with 4 unknowns:
-    #1.  sensitivity = TP/(TP+FN)
-    #2.  specificity = TN/(TN+FP)
-    #3.  prior_b = TP+FP
-    #4.  prior_a = FN+TP
-    #
-    #Therefore:
     TP = sensitivity * prior_a
     TN = specificity * (1.-prior_a)
     FN = prior_a - TP
     FP = (1.-prior_a) - TN 
-
-    #print ("tp tn fn fp")
-    #print (f"{TP} {TN} {FN} {FP}")
-    
-    #Solution:
     prob_a_given_b = TP/(TP+FP)
     prob_a_given_not_b = FN/(TN+FN)
     prob_not_a_given_b = FP/(TP+FP)
     prob_not_a_given_not_b = TN/(TN+FN)
-
- 
     return prob_a_given_b, prob_a_given_not_b, prob_not_a_given_b, prob_not_a_given_not_b
  
 
 def prob_a_and_not_a_given_b_and_not_b (invars, priors, outvars):
- 
         prob_a_given_b = {}
         prob_a_given_not_b = {}
         prob_not_a_given_b = {}
         prob_not_a_given_not_b = {}
-         
         dependency_dict = {}
-    
         prior_a = list(outvars.items())[0][1]
-        
         for vardict,numval_dict in invars:
             for k,varlist in vardict.items():
-                #print("k")
-                #print(k)
                 if k not in dependency_dict:
                     dependency_dict[k]={}
                 for v in priors[k]:
-                    #print("v")
-                    #print(v)
-                
-                    #print("priors[k][v]")
-                    #print(priors[k][v])
                     prior_b = priors[k][v] 
                     if "relative_risk" in numval_dict:
                         if "relative_risk" not in dependency_dict[k]:
@@ -1377,9 +1097,7 @@ def prob_a_and_not_a_given_b_and_not_b (invars, priors, outvars):
                             dependency_dict[k]["specificity"] = {}
                         dependency_dict[k]["sensitivity"][v]= numval_dict["sensitivity"]
                         dependency_dict[k]["specificity"][v]= numval_dict["specificity"]
-        
         for k,var_dependency_dict in dependency_dict.items():
-          
             if k not in prob_a_given_b:
                 prob_a_given_b[k] = {}
             if k not in prob_a_given_not_b:
@@ -1390,15 +1108,7 @@ def prob_a_and_not_a_given_b_and_not_b (invars, priors, outvars):
                 prob_not_a_given_not_b[k] = {}
             for dependency_type, var_dict in var_dependency_dict.items():
                 if dependency_type == "relative_risk":
-                    #print ("var_dict")
-                    #print(var_dict)
-                    #print("prior_a")
-                    #print (prior_a)
-                    #print(f"priors[{k}]")
-                    #print (priors[k])
                     prob_dict = rr_prob_a_and_not_a_given_b_and_not_b(var_dict,prior_a,priors[k])
-                    #print("prob_dict")
-                    #print(prob_dict)
                     for v,prob_type_dict in prob_dict.items():
                         for prob_type,val in prob_type_dict.items():
                             if prob_type == 'prob_a_given_b':
@@ -1414,52 +1124,18 @@ def prob_a_and_not_a_given_b_and_not_b (invars, priors, outvars):
                         prob_a_given_b[k][v], prob_a_given_not_b[k][v], prob_not_a_given_b[k][v], prob_not_a_given_not_b[k][v] = ( 
                             ss_prob_a_and_not_a_given_b_and_not_b(val,var_dependency_dict["specificity"][v],prior_a,priors[k][v])
                             )
-                    
-
-
                 category = f"relative_risk:{numval_dict['relative_risk']}" if "relative_risk" in numval_dict else (
                         f"sensitivity/specificity:{numval_dict['sensitivity']}/{numval_dict['specificity']}")
-                #print(category)
-                #print("prob_a_given_not_b[k][v] ")
-                #print (prob_a_given_not_b[k][v] )
-                #print("prob_a_given_b[k][v] ")
-                #print(prob_a_given_b[k][v] )
-
-
-                #print("prob_not_a_given_not_b[k][v] ")
-                #print (prob_not_a_given_not_b[k][v] )
-                #print("prob_not_a_given_b[k][v] ")
-                #print(prob_not_a_given_b[k][v] )
-
-                    
-            
-
         return prob_a_given_b, prob_a_given_not_b, prob_not_a_given_b, prob_not_a_given_not_b
 
 
 
 def get_good_vars(v,invars,bayesianNetwork,var_val_positions = None, var_val_names = None):
-        #print ("v")
-        #print(v)
-        #print("invars")
-        #print(invars)
-    
-    
         if var_val_positions is None:    
             var_val_positions = get_var_val_positions(bayesianNetwork)
         if var_val_names is None:
             var_val_names= get_var_val_names(bayesianNetwork)
-        #print("var_val_positions")
-        #print(var_val_positions)
-        #print("var_val_names")
-        #print(var_val_names)
-
         numvals = len(var_val_positions[v])
-        # Find out if there are more non stated items to the right or the left, and then send the 
-        # majority .  if there are the same numbe of non stated on the right and left send 
-        # those on the right, because on the right are positive values, and most cases compare to 
-        # a better situation
-
         lowest_val = numvals
         highest_val = 0
         for tup in invars:
@@ -1469,10 +1145,6 @@ def get_good_vars(v,invars,bayesianNetwork,var_val_positions = None, var_val_nam
                         highest_val = var_val_positions[v][val]
                     if var_val_positions[v][val]<lowest_val:
                         lowest_val = var_val_positions[v][val]
-        #print("highest_val")
-        #print(highest_val)
-        #print("lowest_val")
-        #print(lowest_val)
         right_side_not_included = numvals-1-highest_val
         left_side_not_included = lowest_val
         good_vars = []
@@ -1486,12 +1158,6 @@ def get_good_vars(v,invars,bayesianNetwork,var_val_positions = None, var_val_nam
 
 
 def get_good_vars1(v,invars,bayesianNetwork,var_val_positions = None, var_val_names = None):
-        print ("v")
-        print(v)
-        print("invars")
-        print(invars)
-    
-    
         if var_val_positions is None:    
             var_val_positions = get_var_val_positions(bayesianNetwork)
         if var_val_names is None:
@@ -1523,40 +1189,23 @@ def get_rr_vals(v,invars):
 
 
 def replace_rr(invars,new_rr,v,val):
-        #print("v")
-        #print(v)
-        #print("val")
-        #print(val)
         for tup in invars:
             if v in tup[0] and val in tup[0][v] and "relative_risk" in tup[1]:
                 tup[1]["relative_risk"]=new_rr
 
 
 def dependency (bayesianNetwork, cpt, invars,outvars, calibrate = False,adjust=False):
-        #convert all relative risks to relatvie risk direct.  sort the net by the rr invars place in the tree
-        #starting with the highest level in the dag first,
-        #and make a copy of the cpt table without each rr variable, add it to the net and get the value of the outvars
-        #when he rr var is set, and then whem the best var is set.  the new RR val is then CPT(novar) good * RR / CPT(novar)var turned on
-        #add the new RR to the CPT you are constructing , and then compile it
-        #
-        #First get list of variables and sort according to tree level
         priors = None 
         print("start timing...")
         tic = time.perf_counter()
         varlist=[list(tup[0].keys())[0] for tup in invars if "relative_risk" in tup[1]]
         varlist = list(set(varlist))
-        #print("varlist")
-        #print(varlist)
-        #print("outvars")
-        #print(outvars)
         if len(varlist) > 0 and calibrate:
             prevalence_condition_regardless = list(outvars.items())[0][1]
             priors = get_priors(bayesianNetwork,invars,prevalence_condition_regardless,cpt,adjust)
             var_val_positions = get_var_val_positions(bayesianNetwork)
             var_val_names= get_var_val_names(bayesianNetwork)
             copyNetwork = copy.deepcopy(bayesianNetwork)
-            #print("cpt")
-            #print(cpt)
             copyCPT = copy.deepcopy(cpt)
             discreteDistribution = copyNetwork.discreteDistributions.add()
             discreteDistribution.name = "always_true"
@@ -1566,37 +1215,22 @@ def dependency (bayesianNetwork, cpt, invars,outvars, calibrate = False,adjust=F
             variable = discreteDistribution.variables.add()
             variable.name = "no_always_true"
             variable.probability = 0.00001
-            #print("copyNetwork")
-            #print(copyNetwork)
             newInvars = copy.deepcopy(invars)
             newInvars.append(({'always_true': ['always_true']}, {'relative_risk':1.0}))
-            #print ("newInvars")
-            #print(newInvars)
             outvar = list(outvars.items())[0][0]
             df = make_tree(bayesianNetwork,False)
-            #print("df")
-            #print(df)
             order_dict = {}
-            
             for i in range(len(df.columns)):
                 order_dict[i]=[]
                 colname = "level"+str(i)
                 for v in varlist:
-                    #print("df[colname].tolist()")
-                    #print(df[colname].tolist())
                     if v in df[colname].tolist():
                         order_dict[i].append(v)
-            #print("order_dict")
-            #print(order_dict)
             low_rrs =[] 
             for i in range(len(order_dict)):
                 for v in order_dict[i]:
-                    #print("v")
-                    #print(v)
                     thisNetwork = copy.deepcopy(copyNetwork)
-                    for  j in range(len(newInvars)):
-                       # print("newInvars[j][0]")
-                       # print(newInvars[j][0])
+                    for j in range(len(newInvars)):
                         if v in newInvars[j][0]:
                             copyInvars = copy.deepcopy(newInvars)
                             popped = copyInvars.pop(j)
@@ -1609,12 +1243,7 @@ def dependency (bayesianNetwork, cpt, invars,outvars, calibrate = False,adjust=F
                                     if v in copyInvars[l][0]:
                                         copyInvars.pop(l)
                                         break
-                            #print("copyInvars")
-                            #print(copyInvars)
-                            #print("thisNetwork")
-                            #print(thisNetwork)
                             copyCPT[outvar]= dependency_direct(thisNetwork,{},copyInvars,outvars)
-
                             addCpt(thisNetwork,copyCPT)
                             copied = bayesInitialize(thisNetwork)
                             copied.bake()
@@ -1623,77 +1252,42 @@ def dependency (bayesianNetwork, cpt, invars,outvars, calibrate = False,adjust=F
                             chance_of_outvar_given_good = 0.
                             outvar_chance_dict = {}
                             for g in good_vars:
-                                #print ("g")
-                                #print (g)
                                 chance_of_outvar = query(copied,thisNetwork,{v:g},[outvar],adjust)
-                                #print(chance_of_outvar)
-                                #print ("var_val_names")
-                                #print(var_val_names)
-                                #print ("chance_of_outvar[outvar][var_val_names_this[outvar][0]]")
-                                #print (chance_of_outvar[outvar][var_val_names_this[outvar][0]])
                                 outvar_chance_dict [g]= chance_of_outvar[outvar][var_val_names_this[outvar][0]]#list(chance_of_outvar[outvar].values())[0]
                             prior_sum = 0
                             for val,outvar_chance in outvar_chance_dict.items():
                                 chance_of_outvar_given_good += outvar_chance * priors[v][val]
                                 prior_sum += priors[v][val]
                             chance_of_outvar_given_good /= prior_sum
-                            #print ("chance_of_outvar_given_good")
-                            #print(chance_of_outvar_given_good)
                             rr = popped [1]["relative_risk"]
                             chance_of_outvar_given_var = 0.
                             outvar_chance_dict = {}
                             for val in newInvars[j][0][v]:
-                                #print("val")
-                                #print(val)
                                 chance_of_outvar = query(copied,thisNetwork,{v:val}, [outvar],adjust)
-                                #print ("chance_of_outvar[outvar][var_val_names_this[outvar][0]]")
-                                #print (chance_of_outvar[outvar][var_val_names_this[outvar][0]])
                                 outvar_chance_dict[val] = chance_of_outvar[outvar][var_val_names_this[outvar][0]]#list(chance_of_outvar[outvar].values())[0]
                             prior_sum = 0
                             for val,outvar_chance in outvar_chance_dict.items():
                                 chance_of_outvar_given_var += outvar_chance * priors[v][val]
                                 prior_sum += priors[v][val]
-                            #print ("chance_of_outvar_given_var")
-                            #print(chance_of_outvar_given_var)
                             new_rr = (chance_of_outvar_given_good * rr* prior_sum)/chance_of_outvar_given_var
-                            #print ("rr")
-                            #print (rr)
-                            #print("new_rr")
-                            #print (new_rr)
                             if new_rr > .9 and new_rr < 1.1:
                                 low_rrs.append(popped)
                             elif abs(rr-new_rr)>.1:
-                                #print ("newInvars before replace")
-                                #print (newInvars)
                                 replace_rr(newInvars,new_rr,v,val)
-                                #print ("newInvars after replace")
-                                #print (newInvars)
             for  j in range(len(newInvars)):
                 if "always_true"  in newInvars[j][0]:
                     newInvars.pop(j)
                     break
-           # print ("newInvars before removing new ones")
-           # print (newInvars)
-           # print ("low_rrs")
-           # print (low_rrs)
             for low in low_rrs:
                 try:
                     newInvars.remove(low)
                 except ValueError as ve:
-                    #print(ve)
                     pass
-            #print ("invars")
-            #print(invars)
-            #print("newInvars")
-            #print(newInvars)
         else:
             newInvars = invars
-
         cpt_rows,keylist,outvars,description= dependency_direct(bayesianNetwork,cpt,newInvars,outvars,priors)
-
         toc = time.perf_counter()
         diff = toc - tic
-
         print (f"{outvars}  wrapper took {diff} seconds")
         return (cpt_rows,keylist,outvars,description)
 
@@ -1703,10 +1297,12 @@ def align_ci(ci,amt):
     new_amt = amt if ci == 99.9 else ci_z[99.9]*amt/ci_z[ci]
     return new_amt
 
+
 def normalize_ci(maxi,window_dict):
     factor=1.0/maxi
     new_dict = {k: v*factor for k, v in window_dict.items() }
     return new_dict
+
 
 def get_window(bayesianNetwork,invars):
         var_val_positions = get_var_val_positions(bayesianNetwork)
@@ -1718,17 +1314,14 @@ def get_window(bayesianNetwork,invars):
                         window[var] = {}
                     for val in vallist:
                         window[var][val]= align_ci(numval_dict["ci"],numval_dict["plus_minus"])
-                    #print("window")
-                    #print(window)
                     maxi= max(window[var].values())
-                    #print("maxi")
-                    #print(maxi)
                     for val,dummy in var_val_positions[var].items():
                         if val not in window[var]:
                             window[var][val] = maxi
                     window[var] = normalize_ci(maxi,window[var])
         return(window)
 
+    
 def get_stat_info (k,v,invars):
         stattype = stat = ci99 = None
         for vardict,numval_dict in invars:
@@ -1739,16 +1332,8 @@ def get_stat_info (k,v,invars):
                 break
         return stattype,stat,ci99
 
-def validation(k,v,probagivenb,condition_val,invars,final_window,window_factor):
-        #print("k")
-        #print(k)
-        #print("v")
-        #print(v)
-        #print("probagivenb")
-        #print(probagivenb)
-        #print("final_window")
-        #print(final_window)
     
+def validation(k,v,probagivenb,condition_val,invars,final_window,window_factor):
         row = {}
         stattype,stat,ci99 = get_stat_info (k,v,invars)
         if ci99 is not None:
@@ -1763,28 +1348,17 @@ def validation(k,v,probagivenb,condition_val,invars,final_window,window_factor):
 
 
 def dependency_direct(bayesianNetwork, cpt, invars, outvars, priors = None,adjust=False):
-        import itertools
-        from scipy.optimize import linprog
-        from qpsolvers import solve_qp
-
-        import time
-
         validation_row = {}
         print("start timing...")
         tic = time.perf_counter()
         window_factor = get_window(bayesianNetwork,invars)
-        #print("window_factor")
-        #print(window_factor)
         keyset = OrderedSet([])
         frequency_cache = {}
         prevalence_condition_regardless = list(outvars.items())[0][1]
         condition_val = list(outvars.items())[0][0]
         if priors is None:
             priors = get_priors(bayesianNetwork,invars,prevalence_condition_regardless,cpt,adjust)
-        #print("priors")
-        #print(priors)
         prob_a_given_b, prob_a_given_not_b, prob_not_a_given_b, prob_not_a_given_not_b =  prob_a_and_not_a_given_b_and_not_b (invars, priors, outvars)
-
         description = "Against the baseline risks, "
         firsttime = True
         for k,v in outvars.items():                        
@@ -1805,32 +1379,13 @@ def dependency_direct(bayesianNetwork, cpt, invars, outvars, priors = None,adjus
                                         phrase = "" if firsttime1 else " or "
                                         description = description + phrase + var
                                         firsttime1 = False
-                                        #print("val var to priors")
-                                        #print (f"{val}  : {var}")
                                         sum_priors += priors[val][var]
                                 description = description + " is " + str(num)
-
                                 firsttime = False
-                                        
         description = description + "."
-        
-        #print("prob_a_given_not_b")
-        #print (prob_a_given_not_b)
-        #print("prob_a_given_b")
-        #print(prob_a_given_b)
-
-
-        #print("prob_not_a_given_not_b")
-        #print (prob_not_a_given_not_b)
-        #print("prob_not_a_given_b")
-        #print(prob_not_a_given_b)
-
         keylist = list(keyset)
         pos = {k:n for n,k in enumerate(keylist)}
         vdict = dictVarsAndValues(bayesianNetwork, cpt)
-
-        #print("vdict")
-        #print(vdict)
         val_prev = {}
         not_val_prev = {}
         for k in keylist:
@@ -1839,7 +1394,6 @@ def dependency_direct(bayesianNetwork, cpt, invars, outvars, priors = None,adjus
                 previous = None
                 previous_not = None
                 for v in vdict[k]:
-                        #natural order is worse to better, and we want to fill in worse first because better is more accurate
                         if k in prob_a_given_b and v in prob_a_given_b[k]:
                                 val_prev[k][v] = prob_a_given_b[k][v] 
                                 previous = prob_a_given_not_b[k][v]
@@ -1854,14 +1408,8 @@ def dependency_direct(bayesianNetwork, cpt, invars, outvars, priors = None,adjus
                                 not_val_prev [k][v] = previous_not
                         else:
                                 not_val_prev [k][v] = prevalence_condition_regardless
-        #print("val_prev")                        
-        #print(val_prev)                            
-
         vlist = [vdict[v] for v in keylist]
-        #print("vlist")
-        #print (vlist)
         cartesian = list(itertools.product(*vlist))
-       #in cartesian, worst is first and best comes later
         cpt_rows = []
         lhs_inequality_equation1 = {}
         lhs_inequality_equation2 = {}
@@ -1872,112 +1420,22 @@ def dependency_direct(bayesianNetwork, cpt, invars, outvars, priors = None,adjus
         rhs_inequality_equation3 = {}
         rhs_inequality_equation4 = {}
         obj = np.ones(2*len(cartesian))
-
         frequencies = get_frequencies(bayesianNetwork,keylist,cpt,adjust)
-        #print ("frequencies")
-        #print(frequencies)
-        #bnd = [(1.0,1.0)] * len(cartesian)
         bnd = []
- 
         lhs_eq = []
-        rhs_eq = []
-                                
+        rhs_eq = []                
         included_vars = {}                        
         for excluded in keylist:
             included_vars[excluded]= keylist[:pos[excluded]] + keylist[pos[excluded]+1:] 
         for i,c in enumerate(cartesian):
-                #print ("i:c")
-                #print (i)
-                #print (c)
-                #print ("frequencies[c]")
-                #print(frequencies[c])
-                #equation1  (doesnt have every one in it )
-                #non elderly hbp prevalence  = 
-                #  (prevalence of hbp among adult obese psych) * prevalence of adult obese psych 
-                #+ (prevalence of hbp among youngadult obese psych) * prevalence of youngadult obese psych
-                #+ (prevalence of hbp among teen obese psych) * prevalence of teen obese psych
-                #+ (prevalence of hbp among child obese psych) * prevalence of child obese psych
-                #+ (prevalence of hbp among adult overweight psych) * prevalence of adult overweight psych
-                #+ (prevalence of hbp among youngadult overweight psych) * prevalence of youngadult overweight psych
-                #+ (prevalence of hbp among teen overweight psych) * prevalence of teen overweight psych
-                #+ (prevalence of hbp among child overweight psych) * prevalence of child overweight psych
-                #+ (prevalence of hbp among adult healthy psych) * prevalence of adult healthy psych
-                #+ (prevalence of hbp among youngadult healthy psych) * prevalence of youngadult healthy psych
-                #+ (prevalence of hbp among teen healthy psych) * prevalence of teen healthy psych
-                #+ (prevalence of hbp among child healthy psych) * prevalence of child healthy psych
-                #+ (prevalence of hbp among adult obese nonpsych) * prevalence of adult obese nonpsych 
-                #+ (prevalence of hbp among youngadult obese nonpsych) * prevalence of youngadult obese nonpsych
-                #+ (prevalence of hbp among teen obese nonpsych) * prevalence of teen obese nonpsych
-                #+ (prevalence of hbp among child obese nonpsych) * prevalence of child obese nonpsych
-                #+ (prevalence of hbp among adult overweight nonpsych) * prevalence of adult overweight nonpsych
-                #+ (prevalence of hbp among youngadult overweight nonpsych) * prevalence of youngadult overweight nonpsych
-                #+ (prevalence of hbp among teen overweight nonpsych) * prevalence of teen overweight nonpsych
-                #+ (prevalence of hbp among child overweight nonpsych) * prevalence of child overweight nonpsych
-                #+ (prevalence of hbp among adult healthy nonpsych) * prevalence of adult healthy nonpsych
-                #+ (prevalence of hbp among youngadult healthy nonpsych) * prevalence of youngadult healthy nonpsych
-                #+ (prevalence of hbp among teen healthy nonpsych) * prevalence of teen healthy nonpsych
-                #+ (prevalence of hbp among child healthy nonpsych) * prevalence of child healthy nonpsych
-                         
-                         
-                #equation2 (has the balance)         
-                #elderly hbp prevalence  = 
-                #  (prevalence of hbp among elderly obese psych) * prevalence of elderly obese psych 
-                #+ (prevalence of hbp among elderly overweight psych) * prevalence of elderly overweight psych
-                #+ (prevalence of hbp among elderly healthy psych) * prevalence of elderly healthy psych
-                #+ (prevalence of hbp among elderly obese nonpsych) * prevalence of elderly obese nonpsych 
-                #+ (prevalence of hbp among elderly overweight nonpsych) * prevalence of elderly overweight nonpsych
-                #+ (prevalence of hbp among elderly healthy nonpsych) * prevalence of elderly healthy nonpsych
-                
-                 
-                #equation3  (doesnt have every one in it )
-                #non elderly non hbp prevalence  = 
-                #  (prevalence of non hbp among adult obese psych) * prevalence of adult obese psych 
-                #+ (prevalence of non hhbp among youngadult obese psych) * prevalence of youngadult obese psych
-                #+ (prevalence of non hhbp among teen obese psych) * prevalence of teen obese psych
-                #+ (prevalence of non hhbp among child obese psych) * prevalence of child obese psych
-                #+ (prevalence of non hbp among adult overweight psych) * prevalence of adult overweight psych
-                #+ (prevalence of non hbp among youngadult overweight psych) * prevalence of youngadult overweight psych
-                #+ (prevalence of non hbp among teen overweight psych) * prevalence of teen overweight psych
-                #+ (prevalence of non hbp among child overweight psych) * prevalence of child overweight psych
-                #+ (prevalence of non hbp among adult healthy psych) * prevalence of adult healthy psych
-                #+ (prevalence of non hbp among youngadult healthy psych) * prevalence of youngadult healthy psych
-                #+ (prevalence of non hbp among teen healthy psych) * prevalence of teen healthy psych
-                #+ (prevalence of non hbp among child healthy psych) * prevalence of child healthy psych
-                #+ (prevalence of non hbp among adult obese nonpsych) * prevalence of adult obese nonpsych 
-                #+ (prevalence of non hbp among youngadult obese nonpsych) * prevalence of youngadult obese nonpsych
-                #+ (prevalence of non hbp among teen obese nonpsych) * prevalence of teen obese nonpsych
-                #+ (prevalence of non hbp among child obese nonpsych) * prevalence of child obese nonpsych
-                #+ (prevalence of non hbp among adult overweight nonpsych) * prevalence of adult overweight nonpsych
-                #+ (prevalence of non hbp among youngadult overweight nonpsych) * prevalence of youngadult overweight nonpsych
-                #+ (prevalence of non hbp among teen overweight nonpsych) * prevalence of teen overweight nonpsych
-                #+ (prevalence of non hbp among child overweight nonpsych) * prevalence of child overweight nonpsych
-                #+ (prevalence of non hbp among adult healthy nonpsych) * prevalence of adult healthy nonpsych
-                #+ (prevalence of non hbp among youngadult healthy nonpsych) * prevalence of youngadult healthy nonpsych
-                #+ (prevalence of non hbp among teen healthy nonpsych) * prevalence of teen healthy nonpsych
-                #+ (prevalence of non hbp among child healthy nonpsych) * prevalence of child healthy nonpsych
-                         
-                         
-                #equation4 (has the balance)         
-                #elderly with non hbp prevalence = 
-                #  (prevalence of non hbp among elderly obese psych) * prevalence of elderly obese psych 
-                #+ (prevalence of non hbp among elderly overweight psych) * prevalence of elderly overweight psych
-                #+ (prevalence of non hbp among elderly healthy psych) * prevalence of elderly healthy psych
-                #+ (prevalence of non hbp among elderly obese nonpsych) * prevalence of elderly obese nonpsych 
-                #+ (prevalence of non hbp among elderly overweight nonpsych) * prevalence of elderly overweight nonpsych
-                #+ (prevalence of non hbp among elderly healthy nonpsych) * prevalence of elderly healthy nonpsych
-                
-                #equations 1-4 are inequalities, but then there are c equalities , equations that say prob a + ~prob a == 1
-
                 rhs_eq.append(1.)
                 lhs_eq_list = np.zeros(2*len(cartesian))
                 lhs_eq_list[i]=1.
                 lhs_eq_list[i+len(cartesian)]=1.
                 lhs_eq.append(lhs_eq_list)
-
-               
                 for vardict,numval_dict in invars:
                         #relative_risk = numval_dict["relative_risk"] if "relative_risk" in numval_dict else (
-                        #    (prevalence_condition_regardless-numval_dict["sensitivity"])/numval_dict["sensitivity"] if "sensitivity" in numval_dict else 1) 
+                        #(prevalence_condition_regardless-numval_dict["sensitivity"])/numval_dict["sensitivity"] if "sensitivity" in numval_dict else 1) 
                         for k, varlist in vardict.items():
                         
                                 if k not in lhs_inequality_equation1:
@@ -1996,15 +1454,13 @@ def dependency_direct(bayesianNetwork, cpt, invars, outvars, priors = None,adjus
                                         rhs_inequality_equation3[k] = {}
                                 if k not in rhs_inequality_equation4:
                                         rhs_inequality_equation4[k] = {}
-                
-
                                 for v in varlist:
                                         if v not in lhs_inequality_equation1[k]:
-                                                lhs_inequality_equation1[k][v] = np.zeros(2*len(cartesian),np.double) #lhs will be list of lists
+                                                lhs_inequality_equation1[k][v] = np.zeros(2*len(cartesian),np.double) 
                                         if v not in lhs_inequality_equation2[k]:
                                                 lhs_inequality_equation2[k][v] = np.zeros(2*len(cartesian),np.double)
                                         if v not in lhs_inequality_equation3[k]:
-                                                lhs_inequality_equation3[k][v] = np.zeros(2*len(cartesian),np.double) #lhs will be list of lists
+                                                lhs_inequality_equation3[k][v] = np.zeros(2*len(cartesian),np.double) 
                                         if v not in lhs_inequality_equation4[k]:
                                                 lhs_inequality_equation4[k][v] = np.zeros(2*len(cartesian),np.double)
                                         if v not in rhs_inequality_equation1[k]:
@@ -2032,30 +1488,26 @@ def dependency_direct(bayesianNetwork, cpt, invars, outvars, priors = None,adjus
                                         if c[pos[k]]  == v:
                                                 # rhs_equality_equation2[k][v] = priors[k][v]*relative_risk* val_prev[k][v]
                                                 rhs_inequality_equation2[k][v] = prob_a_given_b [k][v]
-                                                lhs_inequality_equation2[k][v][i] = np.double(frequencies[c]) #prob_others_given_b[c_no_k]
+                                                lhs_inequality_equation2[k][v][i] = np.double(frequencies[c])
                                                 rhs_inequality_equation4[k][v] = prob_not_a_given_b [k][v]  
-                                                lhs_inequality_equation4[k][v][i+len(cartesian)] = np.double(frequencies[c])#prob_others_given_b[c_no_k]
+                                                lhs_inequality_equation4[k][v][i+len(cartesian)] = np.double(frequencies[c])
                                         else:
                                                 # rhs_equality_equation1[k][v] = val_prev[k][v]
                                                 rhs_inequality_equation1[k][v] = prob_a_given_not_b[k][v]
-                                                lhs_inequality_equation1[k][v][i] = np.double(frequencies[c])  #prob_others_given_b[c_no_k]
+                                                lhs_inequality_equation1[k][v][i] = np.double(frequencies[c])
                                                 rhs_inequality_equation3[k][v] =  prob_not_a_given_not_b [k][v] 
-                                                lhs_inequality_equation3[k][v][i+len(cartesian)] = np.double(frequencies[c] )#prob_others_given_b[c_no_k]
-                                                                                       
-
+                                                lhs_inequality_equation3[k][v][i+len(cartesian)] = np.double(frequencies[c])
                 #make independence the lower bound
                 #product = 1
                 #for j,k in enumerate(keylist):
                         #product *= 1.-val_prev [k][c[j]] 
                 #bnd.append(( 1-product, 1.0))
-
                 minimum = 1.0
                 for j,k in enumerate(keylist):
                         if val_prev [k][c[j]] < minimum:
                             minimum = val_prev [k][c[j]]
                 #bnd.append((minimum, 1.0))
                 bnd.append((0,1.0))
-
         for i,c in enumerate(cartesian):
                 minimum_not = 1.0
                 for j,k in enumerate(keylist):
@@ -2063,9 +1515,7 @@ def dependency_direct(bayesianNetwork, cpt, invars, outvars, priors = None,adjus
                             minimum_not = not_val_prev [k][c[j]]
                 #bnd.append((minimum_not, 1.0))
                 bnd.append((0, 1.0))
-
         size = 2*len(cartesian)
-
         #P = np.ones((size,size),np.double)
         #for i in range(size):
                 #P[i][i] = 0.
@@ -2077,31 +1527,9 @@ def dependency_direct(bayesianNetwork, cpt, invars, outvars, priors = None,adjus
                 P[i][i] = np.double(i+1)
         for i in range(len(cartesian),size):
                 P[i][i] = np.double(size-i)
-   
-        q = np.zeros (size,np.double)	
+        q = np.zeros (size,np.double)
         lb = np.zeros(size,np.double)
         ub = np.ones(size,np.double)
-
-        #print("before norm:")       
-        #print("rhs_inequality_equation2") 
-        #print(rhs_inequality_equation2) 
-        #print("lhs_inequality_equation2")
-        #print(lhs_inequality_equation2)
-        #print("rhs_inequality_equation4") 
-        #print(rhs_inequality_equation4) 
-        #print("lhs_inequality_equation4")
-        #print(lhs_inequality_equation4)
-        #print("rhs_inequality_equation1")
-        #print(rhs_inequality_equation1)
-        #print("lhs_inequality_equation1")
-        #print(lhs_inequality_equation1)
-        #print("rhs_inequality_equation3")
-        #print(rhs_inequality_equation3)
-        #print("lhs_inequality_equation3")
-        #print(lhs_inequality_equation3)
-                                               
-
-
         for vardict,numval_dict in invars:
                 for k, varlist in vardict.items():
                     for v in varlist:
@@ -2113,10 +1541,6 @@ def dependency_direct(bayesianNetwork, cpt, invars, outvars, priors = None,adjus
                         lhs_inequality_equation3[k][v]=lhs_inequality_equation3[k][v]/norm
                         norm = np.sum(lhs_inequality_equation4[k][v])
                         lhs_inequality_equation4[k][v]=lhs_inequality_equation4[k][v]/norm
-
-        #We also want to include that the first half adds to the prevaence of a and the sencond to the prevalence of ~a
-
-
         rhs_eq.append(prevalence_condition_regardless)
         rhs_eq.append(1.-prevalence_condition_regardless)
         prev_a = np.zeros(2*len(cartesian),np.double)
@@ -2126,33 +1550,11 @@ def dependency_direct(bayesianNetwork, cpt, invars, outvars, priors = None,adjus
                 prev_not_a [i+len(cartesian)] = np.double(frequencies[c])
         lhs_eq.append(prev_a)
         lhs_eq.append(prev_not_a)
-
-        #print("after norm:")       
-        #print("rhs_inequality_equation2") 
-        #print(rhs_inequality_equation2) 
-        #print("lhs_inequality_equation2")
-        #print(lhs_inequality_equation2)
-        #print("rhs_inequality_equation4") 
-        #print(rhs_inequality_equation4) 
-        #print("lhs_inequality_equation4")
-        #print(lhs_inequality_equation4)
-        #print("rhs_inequality_equation1")
-        #print(rhs_inequality_equation1)
-        #print("lhs_inequality_equation1")
-        #print(lhs_inequality_equation1)
-        #print("rhs_inequality_equation3")
-        #print(rhs_inequality_equation3)
-        #print("lhs_inequality_equation3")
-        #print(lhs_inequality_equation3)
-                                               
-
-
         #window = 1.0
         window = 1.0
         #cut = 1.0
         cut = 1.0
         lastTrue = None
-        #At first test window at 1.0 to ensure that there is a solution at all , then narrow down on it with binary search to get the smallest feasable window
         #while cut > 0.05: 
         while cut > 0.0005:                                
                 lhs_ineq = []
@@ -2164,7 +1566,7 @@ def dependency_direct(bayesianNetwork, cpt, invars, outvars, priors = None,adjus
                     
                 for vardict,numval_dict in invars:
                         #relative_risk= numval_dict["relative_risk"] if "relative_risk" in numval_dict else (
-                         #           (prevalence_condition_regardless-numval_dict["sensitivity"])/numval_dict["sensitivity"] if "sensitivity" in numval_dict else 1) 
+                        #(prevalence_condition_regardless-numval_dict["sensitivity"])/numval_dict["sensitivity"] if "sensitivity" in numval_dict else 1) 
                         for k, varlist in vardict.items():
                                 if k not in validation_row:
                                     validation_row[k] = {}
@@ -2175,9 +1577,6 @@ def dependency_direct(bayesianNetwork, cpt, invars, outvars, priors = None,adjus
                                         #rhs_eq.append(rhs_equality_equation1[k][v])
                                         #lhs_eq.append(lhs_equality_equation2[k][v])
                                         #rhs_eq.append(rhs_equality_equation2[k][v])
-                                        
-                                        #UB
-
                                         rhs_ineq1 = 0. if rhs_inequality_equation1[k][v]+ ci_window < 0 else (
                                                 1. if rhs_inequality_equation1[k][v] + ci_window > 1 else rhs_inequality_equation1[k][v]+ci_window )
                                         rhs_ineq2 = 0. if rhs_inequality_equation2[k][v] + ci_window  < 0 else (
@@ -2195,10 +1594,6 @@ def dependency_direct(bayesianNetwork, cpt, invars, outvars, priors = None,adjus
                                         rhs_ineq.append(rhs_ineq3)
                                         lhs_ineq.append(np.multiply(lhs_inequality_equation4[k][v],1.))
                                         rhs_ineq.append(rhs_ineq4)
-
-
-                                        #LB
- 
                                         rhs_ineq1 = 0. if rhs_inequality_equation1[k][v]- ci_window  < 0 else (
                                                 1. if rhs_inequality_equation1[k][v] - ci_window  > 1 else rhs_inequality_equation1[k][v]-ci_window )
                                         rhs_ineq2 = 0. if rhs_inequality_equation2[k][v] - ci_window  < 0 else (
@@ -2207,7 +1602,6 @@ def dependency_direct(bayesianNetwork, cpt, invars, outvars, priors = None,adjus
                                                 1. if rhs_inequality_equation3[k][v] -ci_window > 1 else rhs_inequality_equation3[k][v]-ci_window )
                                         rhs_ineq4 = 0. if rhs_inequality_equation4[k][v] - ci_window < 0 else (
                                                 1. if rhs_inequality_equation4[k][v] - ci_window > 1 else rhs_inequality_equation4[k][v]- ci_window )
-
                                         lhs_ineq.append(np.multiply(lhs_inequality_equation1[k][v],-1.))
                                         rhs_ineq.append(-rhs_ineq1)
                                         lhs_ineq.append(np.multiply(lhs_inequality_equation2[k][v],-1.))
@@ -2216,9 +1610,6 @@ def dependency_direct(bayesianNetwork, cpt, invars, outvars, priors = None,adjus
                                         rhs_ineq.append(-rhs_ineq3)
                                         lhs_ineq.append(np.multiply(lhs_inequality_equation4[k][v],-1.))
                                         rhs_ineq.append(-rhs_ineq4)
-
-
-                                        #Objectie Function
                                         ls_R.append(np.multiply(lhs_inequality_equation1[k][v],1.))
                                         ls_s.append(rhs_inequality_equation1[k][v])
                                         ls_R.append(np.multiply(lhs_inequality_equation2[k][v],1.))
@@ -2227,75 +1618,19 @@ def dependency_direct(bayesianNetwork, cpt, invars, outvars, priors = None,adjus
                                         ls_s.append(rhs_inequality_equation3[k][v])
                                         ls_R.append(np.multiply(lhs_inequality_equation4[k][v],1.))
                                         ls_s.append(rhs_inequality_equation4[k][v])
-
-
                                         row = validation(k,v,rhs_inequality_equation2[k][v],condition_val,invars,window,window_factor)
                                         if len(row)  > 0:
                                             validation_row[k][v] = row
-                                            #print("row")
-                                            #print(row)
-                
                 #opt = linprog(c=obj, A_ub=lhs_ineq, b_ub=rhs_ineq,A_eq=lhs_eq, b_eq=rhs_eq, bounds=bnd,method="revised simplex")
-                #print ("obj")
-                #print (obj)
-                #print ("P")
-                #print(P)
-                #print ("q")
-                #print (q)
-
-                #print ("lhs_eq")
-                #print(lhs_eq)
-                #print("rhs_eq")
-                #print (rhs_eq)
-
-                #print ("lhs_ineq")
-                #print(lhs_ineq)
-                #print("rhs_ineq")
-                #print (rhs_ineq)
-                #print ("bnd")
-                #print(bnd)
-                #print ("lb")
-                #print (lb)
-                #print("ub")
-                #print (ub)
                 lhs_ineq = np.array(lhs_ineq,np.double)
                 rhs_ineq = np.array(rhs_ineq,np.double)
                 lhs_eq = np.array(lhs_eq,np.double)
                 rhs_eq = np.array(rhs_eq,np.double)
                 ls_s = np.array(ls_s,np.double)
                 ls_R = np.array(ls_R,np.double)
-
-                #print ("lhs_ineq.shape")
-                #print (lhs_ineq.shape)
-                #print ("rhs_ineq.shape")
-                #print (rhs_ineq.shape)
-                #print ("lhs_eq.shape")
-                #print (lhs_eq.shape)
-                #print ("rhs_eq.shape")
-                #print (rhs_eq.shape)
-
-                #print ("ls_s.shape")
-                #print (ls_s.shape)
-                #print ("ls_R.shape")
-                #print (ls_R.shape)
-
-
                 #P = np.add(np.dot(ls_R.T, ls_R), np.multiply(np.identity(size,np.double),1.)) 
-
                 P = np.dot(ls_R.T, ls_R) 
                 q = -np.dot(ls_R.T,ls_s )
-
-                #print ("P.shape")
-                #print (P.shape)
-                #print ("q.shape")
-                #print (q.shape)
-
-                #print ("P")
-                #print (P)
-                #print ("q")
-                #print (q)
-
-
                 #opt = linprog(c=obj, A_eq=lhs_eq, b_eq=rhs_eq, bounds=bnd,method="revised simplex")
                 err = False
                 opt = None
@@ -2307,10 +1642,6 @@ def dependency_direct(bayesianNetwork, cpt, invars, outvars, priors = None,adjus
                     print ("ValueError")
                     print(ve)
                     err = True
-
-                        
-                #print("opt")
-                #print (opt)
                 if window == 1.0 and (err) or opt is None: # or not opt.success):
                     break
                 cut /= 2
@@ -2318,11 +1649,6 @@ def dependency_direct(bayesianNetwork, cpt, invars, outvars, priors = None,adjus
                 window = window - cut if not err  else window + cut
                 if not err and opt is not None:# and opt.success:
                     lastTrue = opt
-                    #print("lastTrue")
-                    #print(lastTrue)
-                #print("window")
-                #print (window)
-
         if lastTrue is not None:
             opt = lastTrue
         if opt is not None:
@@ -2334,27 +1660,18 @@ def dependency_direct(bayesianNetwork, cpt, invars, outvars, priors = None,adjus
                     val = opt[i] #opt.x[i] 
                     cpt_row.append(val)
                     cpt_rows.append(cpt_row)
-                    
                     cpt_row = []
                     cpt_row.extend(c)
                     cpt_row.append(list(outvars.items())[1][0])
                     val =  1.0-opt[i]#opt.x[i]
                     cpt_row.append(val)
                     cpt_rows.append(cpt_row)
-        #print ("cpt_rows")
-        #print(cpt_rows)
         toc = time.perf_counter()
         diff = toc - tic
-        #print("validation_row")
-        #print(validation_row)
         dflist = [valid_dict for k,v_dict in validation_row.items() for v, valid_dict in v_dict.items()]
-        #print("dflist")
-        #print(dflist)
         if len (dflist) > 0:
             df = pd.DataFrame(dflist)  
-            #print(df)
             df.to_csv(f"{condition_val}_validation.csv", index = False)
-
         print (f"{invars} ==> {outvars} took {diff} seconds")
         return (cpt_rows,keylist,outvars,description)
 
